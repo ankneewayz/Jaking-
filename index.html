@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NeuroX AI • Dhruv</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles/style.css">
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+
+<div class="app">
+
+<!-- Sidebar -->
+<div class="sidebar">
+<h2>Avatars</h2>
+<div class="avatar" onclick="setAvatar('chibi')">Chibi</div>
+<div class="avatar" onclick="setAvatar('cute')">Cute</div>
+<div class="avatar" onclick="setAvatar('serious')">Serious</div>
+<div class="avatar" onclick="setAvatar('cyberpunk')">Cyberpunk</div>
+<div class="avatar" onclick="setAvatar('fantasy')">Fantasy</div>
+<hr>
+<h2>More</h2>
+<div class="menu-item" onclick="exportChat()">💾 Export Chat</div>
+<div class="menu-item" onclick="showFavorites()">⭐ Favorites</div>
+<div class="menu-item" onclick="showShortcuts()">⚡ Shortcuts</div>
+<div class="menu-item" onclick="showAnalytics()">📊 Analytics</div>
+<div class="menu-item" onclick="openSettings()">⚙ Settings</div>
+<hr>
+<small>Owner: <b>Dhruv</b></small><br>
+<small>IG: <b>@ankneewayz</b></small>
+</div>
+
+<!-- Center -->
+<div class="center">
+<div class="face think" id="face">
+  <div class="eyes">
+    <div class="eye"><div class="pupil blink" id="pupil-left"></div></div>
+    <div class="eye"><div class="pupil blink" id="pupil-right"></div></div>
+  </div>
+  <div class="mouth"></div>
+</div>
+
+<div class="chat" id="chat"></div>
+
+<div class="input">
+<input id="input" placeholder="Ask me anything..." />
+<button onclick="send()">➤</button>
+<button onclick="startVoice()">🎤</button>
+</div>
+</div>
+
+<!-- Dashboard -->
+<div class="dashboard">
+<h3>Dashboard</h3>
+<p>• Mood: <span id="mood">Neutral</span></p>
+<p>• Messages: <span id="count">0</span></p>
+<p>• Model: LLaMA-3.1</p>
+<p>• Sentiment tracking</p>
+<p>• Favorites</p>
+<p>• Export chats</p>
+</div>
+
+</div>
+
+<!-- Settings Panel -->
+<div id="settingsPanel">
+<h3>Settings</h3>
+<div class="setting-item">
+  <label>Avatar</label>
+  <select id="settingAvatar" onchange="applySetting('avatar',this.value)">
+    <option value="chibi">Chibi</option>
+    <option value="cute">Cute</option>
+    <option value="serious">Serious</option>
+    <option value="cyberpunk">Cyberpunk</option>
+    <option value="fantasy">Fantasy</option>
+  </select>
+</div>
+<div class="setting-item">
+  <label>Voice Pitch</label>
+  <input type="range" id="voicePitch" min="0.5" max="2" step="0.1" value="1" onchange="applySetting('pitch',this.value)">
+</div>
+<div class="setting-item">
+  <label>Voice Rate</label>
+  <input type="range" id="voiceRate" min="0.5" max="2" step="0.1" value="1" onchange="applySetting('rate',this.value)">
+</div>
+<button id="closeSettings" onclick="closeSettings()">Close</button>
+</div>
+
+<script>
+let messages=[], msgCount=0, favorites=[], settings={avatar:'chibi', pitch:1, rate:1};
+const MODEL="llama-3.1-8b-instant";
+
+/* Send chat */
+async function send(){
+  const input=document.getElementById("input");
+  const chat=document.getElementById("chat");
+  const face=document.getElementById("face");
+  if(!input.value) return;
+  chat.innerHTML+=`<div class="msg user">You: ${input.value}</div>`;
+  messages.push({role:"user",content:input.value});
+  input.value="";
+  msgCount++;
+  document.getElementById("count").innerText=msgCount;
+  face.className="face think";
+
+  try{
+    const res=await fetch("/api/chat",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:MODEL,messages:messages,max_tokens:200})
+    });
+    const data=await res.json();
+    const reply=data.choices[0].message.content;
+    messages.push({role:"assistant",content:reply});
+    chat.innerHTML+=`<div class="msg ai">AI: ${reply}</div>`;
+    chat.scrollTop=chat.scrollHeight;
+    setEmotion(reply);
+    markFavorite(); // last AI message can be favorite
+    speak(reply);
+  }catch(e){
+    chat.innerHTML+=`<div class="msg ai">AI Error: ${e}</div>`;
+  }
+}
+
+/* Emotion */
+function setEmotion(text){
+  const face=document.getElementById("face");
+  const mood=document.getElementById("mood");
+  face.className="face";
+  if(/good|great|happy|love/i.test(text)){face.classList.add("smile"); mood.innerText="Happy";}
+  else if(/sorry|bad|sad|no/i.test(text)){face.classList.add("frown"); mood.innerText="Sad";}
+  else{face.classList.add("think"); mood.innerText="Neutral";}
+}
+
+/* Avatar */
+function setAvatar(name){
+  const face=document.getElementById("face");
+  face.style.background=name==="cyberpunk"?"radial-gradient(circle,#ff00ff,#000)":"radial-gradient(circle,#00ffff,#001)";
+  settings.avatar=name;
+  document.getElementById("settingAvatar").value=name;
+}
+
+/* Pupils follow cursor */
+document.addEventListener('mousemove', e=>{
+  const left=document.getElementById("pupil-left");
+  const right=document.getElementById("pupil-right");
+  [left,right].forEach(p=>{
+    const rect=p.parentElement.getBoundingClientRect();
+    const dx=(e.clientX-(rect.left+rect.width/2))/15;
+    const dy=(e.clientY-(rect.top+rect.height/2))/15;
+    p.style.transform=`translate(${dx}px,${dy}px)`;
+  });
+});
+
+/* Particles background */
+const c=document.getElementById("bg"),ctx=c.getContext("2d");
+c.width=innerWidth;c.height=innerHeight;
+let p=Array.from({length:120},()=>({x:Math.random()*c.width,y:Math.random()*c.height,r:Math.random()*2.2}));
+(function anim(){
+  ctx.clearRect(0,0,c.width,c.height);
+  ctx.fillStyle="#00ffff";
+  p.forEach(i=>{ctx.beginPath();ctx.arc(i.x,i.y,i.r,0,Math.PI*2);ctx.fill();i.y+=0.35;if(i.y>c.height)i.y=0});
+  requestAnimationFrame(anim);
+})();
+
+/* Voice-to-text */
+let recognition;
+function startVoice(){
+  if(!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)){
+    alert('Your browser does not support voice recognition');
+    return;
+  }
+  recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+  recognition.lang='en-US';recognition.interimResults=false;
+  recognition.onresult=e=>{
+    const spoken=e.results[0][0].transcript;
+    document.getElementById("input").value=spoken;
+    send();
+  }
+  recognition.start();
+}
+
+/* AI Voice */
+function speak(text){
+  if(!window.speechSynthesis) return;
+  const utter=new SpeechSynthesisUtterance(text);
+  utter.lang='en-US';
+  utter.pitch=settings.pitch;
+  utter.rate=settings.rate;
+  speechSynthesis.speak(utter);
+}
+
+/* Favorites */
+function favorites(){return favorites;}
+function markFavorite(){
+  const lastAI = messages.filter(m=>m.role==='assistant').slice(-1)[0];
+  if(lastAI) favorites.push(lastAI.content);
+}
+function showFavorites(){
+  alert(favorites.length>0?favorites.join("\n"):"No favorites yet.");
+}
+
+/* Shortcuts */
+const shortcuts=["Hello!","Explain recursion","Give me a joke","What's AI?"];
+function showShortcuts(){
+  const choice = prompt("Choose shortcut:\n"+shortcuts.map((s,i)=>`${i+1}. ${s}`).join("\n"));
+  const index = parseInt(choice)-1;
+  if(shortcuts[index]){document.getElementById("input").value=shortcuts[index]; send();}
+}
+
+/* Analytics */
+function showAnalytics(){
+  const moodCounts = {Happy:0,Sad:0,Neutral:0};
+  messages.forEach(m=>{
+    if(/good|happy|love/i.test(m.content)) moodCounts.Happy++;
+    else if(/bad|sad|no/i.test(m.content)) moodCounts.Sad++;
+    else moodCounts.Neutral++;
+  });
+  alert(`Messages: ${messages.length}\nHappy: ${moodCounts.Happy}\nSad: ${moodCounts.Sad}\nNeutral: ${moodCounts.Neutral}`);
+}
+
+/* Export */
+function exportChat(){
+  let text = messages.map(m=>`${m.role.toUpperCase()}: ${m.content}`).join("\n");
+  const blob = new Blob([text], {type:"text/plain"});
+  const url = URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download="chat.txt";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* Settings Panel */
+function openSettings(){document.getElementById("settingsPanel").style.display="flex";}
+function closeSettings(){document.getElementById("settingsPanel").style.display="none";}
+function applySetting(type,value){
+  if(type==="avatar") setAvatar(value);
+  else if(type==="pitch") settings.pitch=parseFloat(value);
+  else if(type==="rate") settings.rate=parseFloat(value);
+}
+</script>
+
+</body>
+</html>
